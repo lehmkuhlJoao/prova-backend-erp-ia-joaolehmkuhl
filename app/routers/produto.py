@@ -36,7 +36,7 @@ def listar_produtos(
         default=None, ge=0, description="Only products with stock below this value"
     ),
 ) -> ProdutoPage:
-    items, total = produto_service.list_produtos(
+    return produto_service.list_produtos(
         db,
         page=page,
         page_size=page_size,
@@ -45,7 +45,6 @@ def listar_produtos(
         preco_max=preco_max,
         estoque_abaixo_de=estoque_abaixo_de,
     )
-    return ProdutoPage(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{produto_id}", response_model=ProdutoResponse)

@@ -12,6 +12,7 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 - [Parte 1 — Arquitetura e Organização (teórica)](#parte-1) `(TODO)`
 - [Parte 2 — Assíncrono e Concorrência](#parte-2) `(TODO)`
 - [Parte 3 — API RESTful (CRUD de Produtos)](#parte-3) `(TODO)`
+- [Cache (Redis)](#cache-redis)
 - [Parte 4 — Docker e Orquestração](#parte-4) `(TODO)`
 - [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5) `(TODO)`
 - [Parte 6 — Pergunta de Perfil](#parte-6) `(TODO)`
@@ -45,6 +46,39 @@ resposta da [Parte 1 — Questão 2](#parte-1).
 SQLAlchemy (sem ferramenta de migrations dedicada), suficiente para o escopo desta
 prova. Ver seção [Parte 4](#parte-4) para detalhes de como isso roda no startup da
 aplicação.
+
+## Cache (Redis)
+
+O endpoint `GET /produtos` (listagem paginada) é cacheado no Redis.
+
+**Estratégia de chave**: a chave reflete todos os parâmetros da consulta (`page`,
+`page_size`, e os filtros `nome`, `preco_min`, `preco_max`, `estoque_abaixo_de`), no
+formato `produtos:list:page=1:page_size=20:nome=:preco_min=:preco_max=:estoque_abaixo_de=`.
+Isso significa que cada combinação de página/filtros tem sua própria entrada de
+cache — uma busca por `nome=caneta` não interfere na listagem sem filtro, por
+exemplo.
+
+**Estratégia de expiração (TTL)**: cada entrada expira em **30 segundos**
+(`redis_client.setex`), sem invalidação ativa nas rotas de escrita
+(`POST`/`PATCH`/`DELETE`). Foi a estratégia escolhida para este escopo porque:
+
+- É simples de implementar e de explicar — não exige rastrear quais chaves de
+  listagem podem ter sido afetadas por uma escrita (o que fica mais complexo
+  justamente por causa da combinação de filtros/paginação na chave: uma escrita
+  em um produto pode afetar múltiplas chaves de listagem diferentes, ex:
+  `estoque_abaixo_de=10` e `estoque_abaixo_de=20` ao mesmo tempo);
+- Um TTL curto limita a janela de inconsistência a um valor previsível e pequeno,
+  o que é aceitável para uma listagem de produtos (não é um dado que precisa ser
+  100% em tempo real, diferente de, por exemplo, saldo financeiro).
+
+**O que eu faria diferente com mais tempo**: implementar invalidação ativa —
+deletar (ou usar `SCAN` + `DEL` nas chaves com prefixo `produtos:list:*`) as
+entradas de cache relevantes sempre que um produto for criado, atualizado ou
+deletado. Isso eliminaria a janela de inconsistência do TTL às custas de mais
+complexidade (rastrear/varrer chaves afetadas). Também consideraria cachear
+`GET /produtos/{id}` individualmente, com invalidação pontual da chave daquele id
+específico no update/delete (mais simples de invalidar corretamente do que a
+listagem, já que não depende de filtros).
 
 ## Uso de IA
 
