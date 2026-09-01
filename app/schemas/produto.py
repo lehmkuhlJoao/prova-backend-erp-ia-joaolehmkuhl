@@ -55,3 +55,12 @@ class ProdutoResponse(ProdutoBase):
     data_atualizacao: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProdutoPage(BaseModel):
+    """Paginated response for the produto listing endpoint."""
+
+    items: list[ProdutoResponse]
+    total: int
+    page: int
+    page_size: int
