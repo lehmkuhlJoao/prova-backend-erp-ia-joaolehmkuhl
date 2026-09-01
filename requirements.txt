@@ -8,7 +8,7 @@ pydantic-settings==2.5.2
 
 # Database (PostgreSQL, sync SQLAlchemy)
 sqlalchemy==2.0.35
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.12
 
 # Auth (JWT + password hashing)
 python-jose[cryptography]==3.3.0
