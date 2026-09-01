@@ -17,3 +17,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="ERP - Produtos API", lifespan=lifespan)
 
 app.include_router(produto.router)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Lightweight liveness check used by the Docker healthcheck (no DB/Redis calls)."""
+    return {"status": "ok"}
