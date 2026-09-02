@@ -27,10 +27,14 @@ services:
 
   app:
     build: .
-    # DATABASE_URL/REDIS_URL are set here (not read from .env) because inside the
-    # compose network the app must reach the other containers by service name
-    # (postgres, redis), not localhost — see README for the local vs. Docker
-    # connection difference.
+    # Loads everything from .env (JWT_SECRET_KEY, AUTH_*, POSTGRES_*, ...) as-is
+    # into the container's environment.
+    env_file:
+      - .env
+    # DATABASE_URL/REDIS_URL are overridden here (env_file's above values are
+    # replaced) because inside the compose network the app must reach the other
+    # containers by service name (postgres, redis), not localhost — see README
+    # for the local vs. Docker connection difference.
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0

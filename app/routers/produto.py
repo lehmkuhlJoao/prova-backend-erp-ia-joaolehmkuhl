@@ -4,6 +4,10 @@ Endpoints are declared with plain `def`, not `async def`: the service/repository
 layers use a synchronous SQLAlchemy session, and FastAPI only runs blocking calls
 off the event loop (in a threadpool) for `def` path operations. An `async def`
 endpoint calling this same blocking code would block the whole event loop instead.
+
+Write endpoints (POST/PATCH/DELETE) require a valid JWT; GET endpoints are public
+(read access to a product catalog is treated as public data here) — see README's
+"Autenticação (JWT)" section for the reasoning.
 """
 
 from decimal import Decimal
@@ -12,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.schemas.produto import ProdutoCreate, ProdutoPage, ProdutoResponse, ProdutoUpdate
 from app.services import produto as produto_service
 from app.services.produto import ProdutoNotFoundError
@@ -20,7 +25,11 @@ router = APIRouter(prefix="/produtos", tags=["produtos"])
 
 
 @router.post("", response_model=ProdutoResponse, status_code=status.HTTP_201_CREATED)
-def criar_produto(data: ProdutoCreate, db: Session = Depends(get_db)) -> ProdutoResponse:
+def criar_produto(
+    data: ProdutoCreate,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+) -> ProdutoResponse:
     return produto_service.create_produto(db, data)
 
 
@@ -57,7 +66,10 @@ def buscar_produto(produto_id: int, db: Session = Depends(get_db)) -> ProdutoRes
 
 @router.patch("/{produto_id}", response_model=ProdutoResponse)
 def atualizar_produto(
-    produto_id: int, data: ProdutoUpdate, db: Session = Depends(get_db)
+    produto_id: int,
+    data: ProdutoUpdate,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ) -> ProdutoResponse:
     try:
         return produto_service.update_produto(db, produto_id, data)
@@ -66,7 +78,11 @@ def atualizar_produto(
 
 
 @router.delete("/{produto_id}", status_code=status.HTTP_204_NO_CONTENT)
-def deletar_produto(produto_id: int, db: Session = Depends(get_db)) -> None:
+def deletar_produto(
+    produto_id: int,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+) -> None:
     try:
         produto_service.delete_produto(db, produto_id)
     except ProdutoNotFoundError:
