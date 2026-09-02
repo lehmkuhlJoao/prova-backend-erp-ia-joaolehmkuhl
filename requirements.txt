@@ -13,6 +13,11 @@ psycopg2-binary==2.9.12
 # Auth (JWT + password hashing)
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+# passlib 1.7.4 (unmaintained since 2020) probes bcrypt's __about__.__version__ to
+# pick its backend; bcrypt>=4.1 removed that attribute, which makes passlib crash
+# with a bogus "password cannot be longer than 72 bytes" error on every hash/verify
+# call. Pinning to the last version that still has it avoids the crash.
+bcrypt==4.0.1
 python-multipart==0.0.9
 
 # Cache

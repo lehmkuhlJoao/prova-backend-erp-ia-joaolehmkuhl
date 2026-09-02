@@ -13,6 +13,7 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 - [Parte 2 — Assíncrono e Concorrência](#parte-2) `(TODO)`
 - [Parte 3 — API RESTful (CRUD de Produtos)](#parte-3) `(TODO)`
 - [Cache (Redis)](#cache-redis)
+- [Autenticação (JWT)](#autenticação-jwt)
 - [Parte 4 — Docker e Orquestração](#parte-4)
 - [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5) `(TODO)`
 - [Parte 6 — Pergunta de Perfil](#parte-6) `(TODO)`
@@ -139,6 +140,70 @@ complexidade (rastrear/varrer chaves afetadas). Também consideraria cachear
 `GET /produtos/{id}` individualmente, com invalidação pontual da chave daquele id
 específico no update/delete (mais simples de invalidar corretamente do que a
 listagem, já que não depende de filtros).
+
+## Autenticação (JWT)
+
+Os endpoints de escrita de Produtos (`POST`, `PATCH`, `DELETE /produtos`) exigem um
+token JWT válido. Os endpoints de leitura (`GET /produtos`, `GET /produtos/{id}`)
+são públicos.
+
+**Por que GET ficou público**: tratei a listagem/consulta de produtos como dado de
+catálogo, não sensível — uma escolha razoável pra esse domínio (não é o mesmo que
+expor saldo financeiro ou dado de cliente, por exemplo). O que precisa de proteção
+é a capacidade de *alterar* o estoque/catálogo, daí a escrita exigir autenticação.
+Numa API real de produção, dependendo do caso de uso (ex: catálogo interno, não
+público), eu protegeria o GET também — é só adicionar o mesmo
+`Depends(get_current_user)` nos routers de leitura.
+
+**Usuário fixo, sem cadastro/tabela de usuários**: o enunciado permite
+explicitamente usuário/senha fixos via `.env` para o escopo da prova, e não há
+necessidade real de múltiplos usuários, roles ou refresh token aqui — só demonstrar
+o mecanismo de autenticação JWT funcionando. Um usuário fixo (`AUTH_USERNAME` +
+`AUTH_PASSWORD_HASH` no `.env`) é a opção mais simples que atende ao requisito, sem
+introduzir uma tabela `users`, endpoint de cadastro, etc. — que seriam escopo de um
+sistema de auth de produção, fora do que foi pedido.
+
+A senha não fica em texto puro no `.env`: `AUTH_PASSWORD_HASH` guarda o hash bcrypt
+(gerado uma vez com `passlib`), e o login compara a senha recebida contra o hash
+(`passlib.context.CryptContext.verify`) — mesmo sendo um único usuário de teste,
+evitar comparar/guardar senha em texto puro é hábito que vale manter.
+
+### Como obter e usar um token
+
+**Usuário de teste**: `admin` / senha `admin123` (o `.env.example` já vem com o
+hash bcrypt dessa senha em `AUTH_PASSWORD_HASH`).
+
+**Via Swagger (`/docs`)**: clique no cadeado "Authorize" no canto superior direito,
+preencha `username=admin` e `password=admin123` (os outros campos ficam em
+branco) e confirme. O Swagger guarda o token e passa automaticamente
+`Authorization: Bearer <token>` em todas as chamadas seguintes feitas por ali —
+inclusive nos botões "Try it out" dos endpoints protegidos.
+
+**Via linha de comando**:
+
+```bash
+# 1. login (o endpoint espera form-urlencoded, não JSON, por isso -d ao invés de --json)
+curl -X POST http://localhost:8000/auth/login -d "username=admin&password=admin123"
+# -> {"access_token": "<token>", "token_type": "bearer"}
+
+# 2. usar o token num endpoint protegido
+curl -X POST http://localhost:8000/produtos \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"nome": "Caneta Azul", "preco": "2.50", "quantidade_em_estoque": 100}'
+```
+
+Sem o header `Authorization`, ou com um token inválido/expirado/malformado, os
+endpoints protegidos retornam `401 Unauthorized` (`{"detail": "Not authenticated"}`
+quando o header está ausente, `{"detail": "Could not validate credentials"}` quando
+o token é inválido/expirado). O token expira em 60 minutos por padrão
+(`JWT_ACCESS_TOKEN_EXPIRE_MINUTES` no `.env`).
+
+**O que eu faria diferente com mais tempo/em produção**: tabela de usuários real
+com senha hasheada por usuário (não uma fixa via env), refresh tokens (hoje é só
+access token de vida curta, sem forma de renovar sem logar de novo), roles/escopos
+(hoje é tudo-ou-nada: autenticado ou não, sem diferenciar quem pode fazer o quê),
+e rate limiting no `/auth/login` (hoje não há proteção contra força bruta).
 
 ## Parte 4 — Docker e Orquestração
 
