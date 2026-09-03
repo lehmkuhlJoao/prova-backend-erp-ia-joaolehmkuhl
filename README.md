@@ -141,6 +141,71 @@ complexidade (rastrear/varrer chaves afetadas). Também consideraria cachear
 específico no update/delete (mais simples de invalidar corretamente do que a
 listagem, já que não depende de filtros).
 
+## Parte 2 — Assíncrono e Concorrência
+
+### Questão 3 (teórica)
+
+`(TODO — item 10 da ordem de prioridade; ver CLAUDE.md/PROGRESSO.md)`
+
+### Questão 4 (prática) — `GET /dashboard`
+
+Endpoint isolado (não depende do CRUD de Produtos, sem autenticação) que consulta
+3 fontes simuladas — `estoque-service`, `financeiro-service`, `cliente-service`
+— em paralelo, cada uma como uma função `async` com sua própria latência
+(`app/services/external_services.py`), orquestradas em
+`app/services/dashboard_service.py`.
+
+**Paralelismo com `asyncio.gather`**: as 3 chamadas são disparadas de uma vez com
+`asyncio.gather`. Prova disso: `estoque-service` leva 0.3s, `financeiro-service`
+(com retry) leva ~0.8s, e `cliente-service` estoura o timeout de 2s — se fossem
+sequenciais, a resposta demoraria pelo menos `0.3 + 0.8 + 2.0 = 3.1s` (ou até
+`6.1s` se o timeout não cortasse o `cliente-service` mais cedo); o endpoint
+responde em **~2.0s** (medido com `TestClient`), tempo dominado só pela fonte
+mais lenta, não pela soma de todas.
+
+**Timeout individual**: cada chamada é envolvida em
+`asyncio.wait_for(chamada(), timeout=2.0)`. `cliente-service` simula uma
+latência de 5s de propósito — o `wait_for` cancela e considera "erro" aos 2s,
+sem esperar os 5s completos e sem que isso afete as outras duas chamadas, que
+continuam seu curso normalmente dentro do mesmo `gather`.
+
+**Retry**: `financeiro-service` está propositalmente configurado pra falhar na
+primeira chamada de cada processo (`RuntimeError` simulando indisponibilidade
+temporária) e funcionar normalmente a partir da segunda — `_call_with_timeout`
+tenta 1 vez extra (`retries=1`) antes de desistir, e nesse caso o retry recupera
+a falha automaticamente (fica registrado como sucesso na resposta final, sem o
+cliente da API perceber que houve uma falha por trás).
+
+**Graceful degradation**: `_call_with_timeout` nunca propaga exceção — sempre
+devolve um dicionário com `status: "ok"` ou `status: "erro"`. Isso significa que
+`asyncio.gather` nunca precisa de `return_exceptions=True`: uma fonte falhando
+(timeout ou exceção) não derruba a requisição inteira nem as outras chamadas em
+andamento. A resposta final sempre retorna `200`, com `fontes_com_sucesso`,
+`fontes_com_falha` e `completo` (`false` quando pelo menos uma fonte falhou),
+para o cliente da API decidir o que fazer com uma resposta parcial.
+
+**Exemplo de resposta** (com a falha do `cliente-service` propositalmente
+provocada, e o retry do `financeiro-service` já recuperado):
+
+```json
+{
+  "fontes": [
+    {"fonte": "estoque-service", "status": "ok", "dados": {"produtos_em_estoque": 842, "produtos_estoque_baixo": 5}, "erro": null},
+    {"fonte": "financeiro-service", "status": "ok", "dados": {"faturamento_mes": 125430.5, "pedidos_pendentes_pagamento": 7}, "erro": null},
+    {"fonte": "cliente-service", "status": "erro", "dados": null, "erro": "timeout after 2.0s"}
+  ],
+  "fontes_com_sucesso": ["estoque-service", "financeiro-service"],
+  "fontes_com_falha": ["cliente-service"],
+  "completo": false
+}
+```
+
+**Por que `async def` aqui e `def` no CRUD de Produtos**: este endpoint não tem
+nenhuma chamada bloqueante/síncrona no caminho — é `asyncio.gather`/`wait_for`
+sobre mocks `async` do início ao fim, o caso de uso exato pra `async def`. Já os
+endpoints de Produtos usam uma `Session` síncrona do SQLAlchemy, por isso são
+`def` (ver `app/routers/produto.py`).
+
 ## Autenticação (JWT)
 
 Os endpoints de escrita de Produtos (`POST`, `PATCH`, `DELETE /produtos`) exigem um
