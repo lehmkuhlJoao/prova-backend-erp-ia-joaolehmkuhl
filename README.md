@@ -10,7 +10,7 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 - [Como rodar o projeto](#como-rodar-o-projeto)
 - [Arquitetura e estrutura de pastas](#arquitetura-e-estrutura-de-pastas)
 - [Parte 1 — Arquitetura e Organização (teórica)](#parte-1)
-- [Parte 2 — Assíncrono e Concorrência](#parte-2) `(TODO)`
+- [Parte 2 — Assíncrono e Concorrência](#parte-2)
 - [Parte 3 — API RESTful (CRUD de Produtos)](#parte-3) `(TODO)`
 - [Cache (Redis)](#cache-redis)
 - [Worker de fila (arq)](#worker-de-fila-arq)
@@ -258,7 +258,19 @@ baixo, então não há o que verificar.
 
 ### Questão 3 (teórica)
 
-`(TODO — item 10 da ordem de prioridade; ver CLAUDE.md/PROGRESSO.md)`
+`asyncio` é indicado para operações que passam a maior parte do tempo esperando (I/O), como chamadas de rede, consultas a serviços externos ou operações de banco de dados. Ele funciona com um único processo e uma única thread, mas de forma inteligente: enquanto uma tarefa está esperando uma resposta, o programa aproveita esse tempo ocioso para avançar em outras tarefas, em vez de ficar bloqueado esperando uma de cada vez. Utilizei esse conceito no endpoint de dashboard (Parte 2, Q4), consultando três serviços simulados simultaneamente com `asyncio.gather`.
+
+`threading` também é voltado para operações de espera (I/O), de forma semelhante ao `asyncio`, mas utiliza múltiplas threads reais do sistema operacional em vez de um único fluxo controlado. É útil principalmente quando se trabalha com bibliotecas que não têm suporte nativo a `async`/`await`.
+
+`multiprocessing` é indicado para tarefas que exigem processamento pesado de CPU, e não espera de rede, como processar um arquivo grande realizando cálculos linha a linha. Diferente das duas abordagens anteriores, o `multiprocessing` cria processos Python totalmente separados, permitindo paralelismo real utilizando múltiplos núcleos do processador.
+
+Uma diferença importante entre essas abordagens está relacionada ao GIL (Global Interpreter Lock) do Python, que permite que apenas uma thread execute código Python por vez dentro de um mesmo processo. Isso significa que `threading` não traz ganho de performance em tarefas de CPU intensiva (o GIL continua limitando a execução a uma thread por vez), sendo útil apenas para tarefas de espera. Já o `multiprocessing`, por criar processos separados (cada um com seu próprio interpretador Python), consegue contornar essa limitação e realizar processamento paralelo de verdade.
+
+Exemplos de uso em um cenário de ERP:
+
+- **asyncio**: consultar simultaneamente APIs de estoque, financeiro e clientes para montar um dashboard, como implementado na Parte 2, Questão 4.
+- **multiprocessing**: processar um arquivo CSV grande com milhares de linhas, aplicando cálculos em cada uma.
+- **threading**: realizar operações de I/O utilizando bibliotecas mais antigas que não possuem suporte nativo a `async`/`await`.
 
 ### Questão 4 (prática) — `GET /dashboard`
 
