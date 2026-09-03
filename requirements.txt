@@ -22,3 +22,6 @@ python-multipart==0.0.9
 
 # Cache
 redis==5.0.8
+
+# Background job queue (worker)
+arq==0.26.3

@@ -8,20 +8,30 @@ endpoint calling this same blocking code would block the whole event loop instea
 Write endpoints (POST/PATCH/DELETE) require a valid JWT; GET endpoints are public
 (read access to a product catalog is treated as public data here) — see README's
 "Autenticação (JWT)" section for the reasoning.
+
+PATCH also enqueues a background job (verificar_estoque_baixo, run by the arq
+worker) whenever the update reduces quantidade_em_estoque — via BackgroundTasks,
+so the response is sent immediately, without waiting for the worker.
 """
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from arq.connections import ArqRedis
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.queue import get_arq_pool
 from app.core.security import get_current_user
 from app.schemas.produto import ProdutoCreate, ProdutoPage, ProdutoResponse, ProdutoUpdate
 from app.services import produto as produto_service
 from app.services.produto import ProdutoNotFoundError
 
 router = APIRouter(prefix="/produtos", tags=["produtos"])
+
+
+async def _enqueue_verificar_estoque_baixo(pool: ArqRedis, produto_id: int) -> None:
+    await pool.enqueue_job("verificar_estoque_baixo", produto_id)
 
 
 @router.post("", response_model=ProdutoResponse, status_code=status.HTTP_201_CREATED)
@@ -68,13 +78,24 @@ def buscar_produto(produto_id: int, db: Session = Depends(get_db)) -> ProdutoRes
 def atualizar_produto(
     produto_id: int,
     data: ProdutoUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user),
+    arq_pool: ArqRedis = Depends(get_arq_pool),
 ) -> ProdutoResponse:
     try:
-        return produto_service.update_produto(db, produto_id, data)
+        quantidade_antes = produto_service.get_produto(db, produto_id).quantidade_em_estoque
+        produto = produto_service.update_produto(db, produto_id, data)
     except ProdutoNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Produto not found")
+
+    estoque_reduzido = (
+        data.quantidade_em_estoque is not None and data.quantidade_em_estoque < quantidade_antes
+    )
+    if estoque_reduzido:
+        background_tasks.add_task(_enqueue_verificar_estoque_baixo, arq_pool, produto.id)
+
+    return produto
 
 
 @router.delete("/{produto_id}", status_code=status.HTTP_204_NO_CONTENT)

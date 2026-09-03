@@ -13,6 +13,7 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 - [Parte 2 — Assíncrono e Concorrência](#parte-2) `(TODO)`
 - [Parte 3 — API RESTful (CRUD de Produtos)](#parte-3) `(TODO)`
 - [Cache (Redis)](#cache-redis)
+- [Worker de fila (arq)](#worker-de-fila-arq)
 - [Autenticação (JWT)](#autenticação-jwt)
 - [Parte 4 — Docker e Orquestração](#parte-4)
 - [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5) `(TODO)`
@@ -29,10 +30,12 @@ cp .env.example .env   # os valores default já funcionam com o compose
 docker compose up --build
 ```
 
-Isso sobe 3 containers: `postgres`, `redis` e `app` (a API). O `app` só inicia
-depois que `postgres` e `redis` reportam `healthy`, e cria as tabelas
-automaticamente no startup via `Base.metadata.create_all()` — não há
-migração/seed manual necessária (ver "Schema do banco" abaixo).
+Isso sobe 4 containers: `postgres`, `redis`, `app` (a API) e `worker` (fila em
+background — ver [Worker de fila (arq)](#worker-de-fila-arq)). O `app` e o
+`worker` só iniciam depois que `postgres` e `redis` reportam `healthy`, e o
+`app` cria as tabelas automaticamente no startup via
+`Base.metadata.create_all()` — não há migração/seed manual necessária (ver
+"Schema do banco" abaixo).
 
 API em `http://localhost:8000`, docs interativos em `http://localhost:8000/docs`.
 
@@ -52,6 +55,16 @@ cp .env.example .env   # ajuste host/porta/credenciais conforme seu Postgres/Red
 python -c "from app.core.database import init_db; init_db()"   # cria as tabelas
 uvicorn app.main:app --reload
 ```
+
+Pra também processar a fila em background (ver [Worker de fila (arq)](#worker-de-fila-arq)), rode o worker num segundo terminal, com o mesmo venv ativo:
+
+```bash
+arq app.workers.tasks.WorkerSettings
+```
+
+Sem o worker rodando, os jobs enfileirados (ex: pelo `PATCH /produtos/{id}`)
+ficam parados no Redis até algum worker os consumir — a API continua
+funcionando normalmente, só o processamento em background não acontece.
 
 ### `localhost` vs. nome do serviço: por que `DATABASE_URL`/`REDIS_URL` diferem
 
@@ -140,6 +153,64 @@ complexidade (rastrear/varrer chaves afetadas). Também consideraria cachear
 `GET /produtos/{id}` individualmente, com invalidação pontual da chave daquele id
 específico no update/delete (mais simples de invalidar corretamente do que a
 listagem, já que não depende de filtros).
+
+## Worker de fila (arq)
+
+**A tarefa**: `verificar_estoque_baixo` (`app/workers/tasks.py`) recebe um
+`produto_id`, consulta a quantidade em estoque **atual** desse produto no banco
+e loga um alerta estruturado (`logger.warning`) se estiver abaixo de 10 unidades
+(`ESTOQUE_BAIXO_THRESHOLD`). Não há sistema de notificação — o log já demonstra
+o padrão pedido (enfileirar → processar em background); um passo natural com
+mais tempo seria trocar o log por um evento publicado (email, Slack, outra fila).
+
+**Por que consulta o estoque atual em vez de usar o valor de quando o job foi
+enfileirado**: se dois `PATCH` no mesmo produto acontecerem em sequência rápida
+(antes do worker processar o primeiro job), o job só teria sentido checando o
+estado mais recente — checar um valor already-stale seria enganoso. Efeito
+colateral aceitável: se dois updates enfileirarem dois jobs próximos, os dois
+podem acabar checando o mesmo valor final (idempotente, sem problema aqui).
+
+**Como é disparado**: `PATCH /produtos/{id}` (`app/routers/produto.py`) compara
+a quantidade antes/depois do update; se a quantidade **diminuiu**, enfileira o
+job via `BackgroundTasks.add_task(...)`, que roda **depois** da resposta HTTP já
+ter sido enviada — a chamada `pool.enqueue_job(...)` em si só publica a
+mensagem no Redis (rápido), então na prática o cliente da API não percebe
+diferença de latência entre um `PATCH` que enfileira e um que não enfileira
+(medido: ~13ms de resposta, contra ~400-500ms até o worker sequer pegar o job).
+
+**Broker**: o mesmo Redis já usado pelo cache (`REDIS_URL`) — `arq` guarda a
+fila e o resultado dos jobs lá, sem precisar de outro serviço.
+
+### Rodando o worker
+
+- **Local** (com o venv ativo, Postgres/Redis já rodando):
+  `arq app.workers.tasks.WorkerSettings`
+- **Docker**: já sobe automaticamente com `docker compose up` — é o serviço
+  `worker` no `docker-compose.yml`, mesma imagem do `app`, só trocando o
+  comando (`arq app.workers.tasks.WorkerSettings` em vez de `uvicorn`).
+
+**Sobre o healthcheck do `worker`**: a imagem herda o `HEALTHCHECK` do
+Dockerfile, que testa `http://localhost:8000/health` — isso só existe no
+serviço `app` (o worker não serve HTTP nenhum), então esse healthcheck foi
+**desabilitado explicitamente** (`healthcheck: disable: true`) só pro serviço
+`worker` no compose, pra não ficar marcado como "unhealthy" por engano.
+
+### Como ver a tarefa funcionando
+
+1. Suba o worker (local ou via `docker compose up`).
+2. Faça login (ver [Autenticação (JWT)](#autenticação-jwt)) e crie um produto
+   com `quantidade_em_estoque` alto (ex: 20).
+3. `PATCH` esse produto reduzindo a quantidade pra abaixo de 10 (ex:
+   `{"quantidade_em_estoque": 3}`).
+4. No log do worker (terminal local, ou `docker compose logs worker`), aparece:
+   `ALERTA DE ESTOQUE BAIXO: produto_id=... nome='...' quantidade_em_estoque=3 limite=10`
+
+Qualquer redução de estoque enfileira o job, mesmo que o valor final continue
+acima de 10 — nesse caso o log final é só informativo
+(`verificar_estoque_baixo: produto_id=... ok`), sem o alerta. Um `PATCH` que só
+**aumenta** o estoque (ou que não toca em `quantidade_em_estoque`) não enfileira
+nada — um aumento nunca faz um produto cruzar o limite de estoque baixo pra
+baixo, então não há o que verificar.
 
 ## Parte 2 — Assíncrono e Concorrência
 
