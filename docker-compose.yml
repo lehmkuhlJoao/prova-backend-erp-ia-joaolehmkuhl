@@ -46,5 +46,26 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    # Same image as `app`, just running the arq worker instead of uvicorn — no
+    # separate Dockerfile needed for this.
+    build: .
+    command: ["arq", "app.workers.tasks.WorkerSettings"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    # The image's HEALTHCHECK (inherited from the Dockerfile) probes
+    # http://localhost:8000/health, which only exists in the `app` service —
+    # the worker never serves HTTP, so that check would never pass here.
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
