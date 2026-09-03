@@ -17,7 +17,7 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 - [Autenticação (JWT)](#autenticação-jwt)
 - [Parte 4 — Docker e Orquestração](#parte-4)
 - [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5) `(TODO)`
-- [Parte 6 — Pergunta de Perfil](#parte-6) `(TODO)`
+- [Parte 6 — Pergunta de Perfil](#parte-6)
 - [Parte 7 — Portfólio](#parte-7) `(TODO)`
 - [Uso de IA](#uso-de-ia) `(TODO)`
 
@@ -428,6 +428,18 @@ e rate limiting no `/auth/login` (hoje não há proteção contra força bruta).
   explicação completa dessa diferença.
 - Instruções completas de execução (Docker e local) estão em
   [Como rodar o projeto](#como-rodar-o-projeto).
+
+## Parte 6 — Pergunta de Perfil
+
+### Questão 10
+
+Reagiria de forma positiva a essa decisão. Considero minha capacidade de adaptação a novas tecnologias, sejam elas mais modernas ou mais legadas, um dos meus pontos fortes. Já precisei me virar tanto em situações envolvendo tecnologias mais antigas, recorrendo à documentação e resolvendo problemas com pouco suporte direto, quanto aprendendo ferramentas novas rapidamente quando o contexto exigiu. Encararia aprender Go como mais um desafio desse tipo, independente de ser algo totalmente novo pra mim.
+
+Nunca trabalhei com Go, então não tenho experiência prática para avaliar profundamente seus pontos fortes e fracos frente a outras linguagens. Mas, pelo que conheço conceitualmente, Go é uma escolha comum e tecnicamente razoável para esse tipo de cenário: possui concorrência nativa leve (goroutines), baixo overhead de execução por ser compilado, e gera um binário único sem dependências externas, o que facilita o deploy. Essas características se alinham diretamente com o que foi descrito no cenário (alta performance, baixa latência, alto throughput).
+
+Caso eu discordasse tecnicamente da escolha em uma situação real, argumentaria de forma aberta e respeitosa, trazendo dados concretos: pesquisaria alternativas, apresentaria vantagens e desvantagens de cada opção com clareza, e proporia uma conversa técnica com o time para decidir juntos, sempre buscando entender o contexto e as razões por trás da decisão original antes de simplesmente discordar.
+
+Concordando com a escolha, mas sem experiência prévia em Go, me organizaria estudando a linguagem de forma dedicada, buscando documentação oficial, cursos e projetos práticos pequenos antes de atuar diretamente na frente de produção. Buscaria também apoio do time, perguntando sobre padrões e convenções já utilizados internamente, e seria transparente sobre minha curva de aprendizado, priorizando entregar com qualidade mesmo que isso exigisse mais tempo de estudo inicial.
 
 ## Uso de IA
 
