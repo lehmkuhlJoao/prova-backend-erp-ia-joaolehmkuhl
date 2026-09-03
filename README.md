@@ -9,7 +9,7 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 
 - [Como rodar o projeto](#como-rodar-o-projeto)
 - [Arquitetura e estrutura de pastas](#arquitetura-e-estrutura-de-pastas)
-- [Parte 1 — Arquitetura e Organização (teórica)](#parte-1) `(TODO)`
+- [Parte 1 — Arquitetura e Organização (teórica)](#parte-1)
 - [Parte 2 — Assíncrono e Concorrência](#parte-2) `(TODO)`
 - [Parte 3 — API RESTful (CRUD de Produtos)](#parte-3) `(TODO)`
 - [Cache (Redis)](#cache-redis)
@@ -120,6 +120,48 @@ resposta da [Parte 1 — Questão 2](#parte-1).
 SQLAlchemy (sem ferramenta de migrations dedicada), suficiente para o escopo desta
 prova. Ver seção [Parte 4](#parte-4) para detalhes de como isso roda no startup da
 aplicação.
+
+## Parte 1 — Arquitetura e Organização (teórica)
+
+### Questão 1
+
+Organizaria os microsserviços por área de responsabilidade de negócio: um serviço para Pedidos/Estoque, outro para Financeiro, outro para Clientes, cada um com seu próprio banco de dados. A principal motivação para essa separação é evitar um single point of failure: se o serviço de Financeiro tiver instabilidade, isso não deve necessariamente derrubar a capacidade de criar pedidos ou consultar estoque. Além disso, essa separação permite que os serviços evoluam de forma independente, sejam implantados separadamente, e até utilizem tecnologias diferentes internamente, se fizer sentido para o problema de cada um.
+
+Usaria comunicação síncrona (REST) quando a resposta é necessária imediatamente para decidir o próximo passo do fluxo, como verificar se um cliente existe antes de permitir a criação de um pedido. Usaria comunicação assíncrona (via fila) quando a ação seguinte não precisa bloquear a resposta ao usuário, como notificar o serviço Financeiro sobre um novo pedido para gerar uma cobrança. Isso também torna o sistema mais resiliente: se o Financeiro estiver temporariamente indisponível, a mensagem permanece na fila até ser processada, sem impedir a criação do pedido.
+
+Cada microsserviço teria seu próprio banco PostgreSQL, isolado dos demais, mantendo a independência entre os serviços: o serviço de Pedidos/Estoque não deveria acessar diretamente o banco do Financeiro, por exemplo, e sim se comunicar via API ou fila quando precisasse de dados de outro domínio. O Redis entraria com pelo menos dois papéis práticos, que utilizei nesta própria prova: cache de leituras (evitando consultas repetidas ao Postgres para dados que não mudam com frequência, como fiz na listagem de produtos) e fila de mensagens para comunicação assíncrona entre serviços (como fiz com o worker usando arq para processar tarefas em segundo plano). Além desses dois usos, o Redis também poderia atuar como mecanismo de pub/sub, permitindo que um serviço notifique múltiplos outros sobre um evento, e como lock distribuído, garantindo que múltiplas instâncias de um mesmo serviço não executem uma mesma ação concorrentemente.
+
+Um API Gateway funcionaria como ponto único de entrada para todas as requisições externas, direcionando cada uma para o microsserviço correto (Pedidos/Estoque, Financeiro ou Clientes), sem que o cliente precise conhecer os endereços internos de cada serviço. Além do roteamento, o Gateway centralizaria responsabilidades transversais como autenticação (validando o JWT uma única vez, antes de rotear a requisição), rate limiting, e logging de todas as requisições que entram no sistema. Ferramentas como Kong ou Nginx são exemplos comuns usados para essa função.
+
+Para observabilidade, utilizaria os três pilares principais: logs, métricas e tracing.
+
+Para métricas, utilizaria Prometheus fazendo scraping periódico das aplicações, com painéis no Grafana. Priorizaria monitorar: taxa de erros por código HTTP (4xx e 5xx, separando erros de cliente dos de servidor), latência das requisições (p50/p95/p99), e disponibilidade de cada microsserviço individualmente, já que num ERP é importante identificar rapidamente se um serviço específico está degradado sem afetar a visão geral do sistema.
+
+Para logs, centralizaria os registros de todos os microsserviços em um local único (ex: ELK Stack ou Loki), facilitando investigação de problemas sem precisar acessar cada serviço individualmente.
+
+Para tracing, utilizaria uma ferramenta como Jaeger ou OpenTelemetry, permitindo acompanhar uma requisição específica conforme ela atravessa múltiplos microsserviços (por exemplo, uma criação de pedido que passa por Pedidos, Clientes e Financeiro), identificando em qual etapa específica ocorreu lentidão ou falha.
+
+Como prioridade de monitoramento em um ERP, focaria primeiro em: disponibilidade dos serviços críticos (como o de Pedidos, que impacta diretamente a operação), taxa de erros nas integrações entre serviços, e tempo de resposta das operações mais usadas pelos usuários finais.
+
+### Questão 2
+
+Organizei o projeto em camadas separadas (`routers`, `services`, `repositories`, `schemas`, `models`, `core`) com o objetivo principal de manter cada parte do código com uma única responsabilidade, facilitando manutenção, testabilidade e desacoplamento entre as partes.
+
+`routers`: contém os endpoints da API, os caminhos que o cliente acessa (`POST /produtos`, `GET /produtos`, etc). Essa camada só recebe a requisição, repassa para o `service` correspondente, e devolve a resposta. Não contém lógica de negócio nem acesso direto ao banco.
+
+`services`: contém a lógica de negócio e as decisões do sistema. É aqui que ficam as regras sobre o que fazer com os dados. Por exemplo, no cache de listagem de produtos, foi o `service` que decidiu a lógica: primeiro verifica se existe no Redis; se não existir, busca no banco via `repository` e depois guarda no cache. Da mesma forma, no endpoint de dashboard (Parte 2, Q4), foi o `service` que orquestrou as chamadas em paralelo às três fontes simuladas, com timeout e retry.
+
+`repositories`: responsável exclusivamente pelo acesso a dados, executando queries no banco (via SQLAlchemy), sem tomar nenhuma decisão de negócio. Ele só executa o que é pedido (buscar, criar, atualizar, deletar), sem saber, por exemplo, que existe cache envolvido no fluxo.
+
+`schemas`: define os formatos de entrada e saída da API, usando Pydantic. Aqui ficam as validações dos dados recebidos (preço não pode ser negativo, nome não pode ser vazio) e o formato dos dados devolvidos ao cliente. Existem schemas diferentes para cada momento (criação, atualização parcial, resposta), já que os campos exigidos mudam conforme o contexto. Por exemplo, ao criar um produto, o cliente não deve enviar `id` nem as datas, que são geradas pelo banco.
+
+`models`: define a estrutura das tabelas do banco de dados via SQLAlchemy (ORM). Os atributos de cada classe representam as colunas da tabela correspondente no PostgreSQL.
+
+`core`: contém configurações e integrações transversais do projeto, usadas por várias camadas: conexão com o banco de dados, configurações lidas do `.env`, cliente Redis, autenticação (JWT), fila de tarefas (arq).
+
+Essa separação garante que cada camada só conhece a camada imediatamente abaixo dela (o `router` não fala diretamente com o banco, por exemplo), o que permite trocar detalhes de implementação, como adicionar cache com Redis ou trocar a estratégia de autenticação, sem impactar as demais camadas. Foi o que aconteceu, por exemplo, ao adicionar cache no endpoint de listagem: toda a lógica ficou concentrada no `service`, e o `router` não precisou de nenhuma alteração.
+
+Quanto aos princípios que inspiraram essa escolha: a separação de responsabilidades segue uma ideia próxima ao princípio de responsabilidade única (do SOLID) e a uma versão simplificada de Clean Architecture, sem a intenção de aplicar um framework arquitetural completo. O objetivo foi manter o código organizado e testável dentro do escopo desta prova.
 
 ## Cache (Redis)
 
