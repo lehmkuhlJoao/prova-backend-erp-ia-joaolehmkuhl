@@ -16,7 +16,7 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 - [Worker de fila (arq)](#worker-de-fila-arq)
 - [Autenticação (JWT)](#autenticação-jwt)
 - [Parte 4 — Docker e Orquestração](#parte-4)
-- [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5) `(TODO)`
+- [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5)
 - [Parte 6 — Pergunta de Perfil](#parte-6)
 - [Parte 7 — Portfólio](#parte-7)
 - [Uso de IA](#uso-de-ia) `(TODO)`
@@ -495,7 +495,13 @@ Questão 9, abaixo.
 
 ### Questão 9 (teórica)
 
-`(TODO — item 10 da ordem de prioridade; ver CLAUDE.md/PROGRESSO.md)`
+Tool/Function Calling: em vez de utilizar regras fixas como fiz na Questão 8, exporia ao LLM um conjunto de "ferramentas" descritas com nome, propósito e parâmetros esperados, por exemplo, uma ferramenta consultar_estoque recebendo um parâmetro limite (número), ou criar_pedido recebendo os dados necessários para criar um pedido. O próprio LLM, ao receber a pergunta em linguagem natural do usuário, decidiria qual ferramenta chamar e com quais parâmetros, de forma estruturada, substituindo a lógica de regex/palavras-chave por uma decisão feita pelo modelo.
+
+MCP (Model Context Protocol): utilizaria o padrão MCP para expor essas ferramentas ao agente. O MCP padroniza a forma como ferramentas são descritas e disponibilizadas a um LLM, evitando que cada integração precise ser feita de forma proprietária para cada modelo. Na arquitetura de microsserviços descrita na Parte 1, um servidor MCP se encaixaria como um serviço adicional, atuando como intermediário entre o LLM e os microsserviços já existentes (Pedidos/Estoque, Financeiro, Clientes). Esse servidor exporia ferramentas como consultar_estoque ou criar_pedido, e cada uma delas, internamente, faria uma chamada REST comum ao microsserviço responsável, exatamente como já ocorre na comunicação síncrona descrita anteriormente. Dessa forma, o LLM nunca acessaria diretamente o banco de dados ou os microsserviços; ele decide o que fazer, enquanto o servidor MCP e os microsserviços decidem como fazer, mantendo a mesma separação de responsabilidades já utilizada no restante do sistema.
+
+Guardrails: classificaria as ferramentas disponíveis ao agente por nível de risco. Ferramentas de leitura (consultar estoque, consultar pedido) poderiam ser executadas diretamente, já que o impacto de um erro de interpretação é baixo. Já ferramentas de escrita ou destrutivas (deletar um pedido, cancelar uma compra) exigiriam uma etapa de confirmação explícita do usuário antes da execução, evitando que uma interpretação equivocada do LLM cause uma ação irreversível sem consentimento humano. Para lidar com alucinação ou erro de interpretação, todos os parâmetros extraídos pelo LLM passariam pela mesma validação já utilizada no restante da API (Pydantic), rejeitando parâmetros inválidos antes de qualquer execução; além disso, restringiria o conjunto de ferramentas disponíveis ao mínimo necessário, reduzindo a superfície de erro possível, e garantiria que toda resposta do agente fosse baseada exclusivamente em dados reais retornados pelas ferramentas, nunca inventados pelo próprio modelo.
+
+Custo, latência e observabilidade: diferente de chamadas tradicionais de API, chamadas a LLMs costumam ter custo variável por volume de texto processado, o que exige monitorar não apenas disponibilidade, mas também gasto ao longo do tempo; uma estratégia comum para mitigar isso é cachear respostas para perguntas repetidas ou muito similares, reaproveitando a mesma infraestrutura de cache com Redis já utilizada no projeto. Quanto à latência, LLMs tendem a responder mais lentamente que uma consulta tradicional de banco, o que pode justificar o uso de comunicação assíncrona (como o worker com arq implementado neste projeto) em cenários onde não é necessário bloquear o usuário esperando a resposta do modelo. Por fim, a observabilidade de um sistema com LLM deveria incluir logging estruturado de prompts e respostas, tanto para depuração quanto para eventual auditoria de decisões tomadas pelo agente, além de uma estratégia de fallback para quando o provedor de IA estiver indisponível, devolvendo uma mensagem de erro clara ao invés de comprometer o funcionamento do restante da aplicação.
 
 ## Parte 6 — Pergunta de Perfil
 
