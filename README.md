@@ -18,7 +18,7 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 - [Parte 4 — Docker e Orquestração](#parte-4)
 - [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5) `(TODO)`
 - [Parte 6 — Pergunta de Perfil](#parte-6)
-- [Parte 7 — Portfólio](#parte-7) `(TODO)`
+- [Parte 7 — Portfólio](#parte-7)
 - [Uso de IA](#uso-de-ia) `(TODO)`
 
 ## Como rodar o projeto
@@ -440,6 +440,38 @@ Nunca trabalhei com Go, então não tenho experiência prática para avaliar pro
 Caso eu discordasse tecnicamente da escolha em uma situação real, argumentaria de forma aberta e respeitosa, trazendo dados concretos: pesquisaria alternativas, apresentaria vantagens e desvantagens de cada opção com clareza, e proporia uma conversa técnica com o time para decidir juntos, sempre buscando entender o contexto e as razões por trás da decisão original antes de simplesmente discordar.
 
 Concordando com a escolha, mas sem experiência prévia em Go, me organizaria estudando a linguagem de forma dedicada, buscando documentação oficial, cursos e projetos práticos pequenos antes de atuar diretamente na frente de produção. Buscaria também apoio do time, perguntando sobre padrões e convenções já utilizados internamente, e seria transparente sobre minha curva de aprendizado, priorizando entregar com qualidade mesmo que isso exigisse mais tempo de estudo inicial.
+
+## Parte 7 — Portfólio
+
+### Questão 11
+
+Escolhi este projeto por ser público; a maior parte do meu trabalho mais recente está em repositórios privados da empresa onde atuo atualmente (https://github.com/lehmkuhlJoao/a3-ingressos).
+
+Qual problema ele resolve: é um sistema de venda de ingressos para eventos, desenvolvido como projeto acadêmico (A3 da faculdade). O foco real do projeto não é ser um produto completo de ticketing, mas demonstrar uma arquitetura distribuída: decomposição em microsserviços, comunicação síncrona e assíncrona, controle de concorrência sobre um recurso escasso (estoque de ingressos), API Gateway, e observabilidade com métricas e dashboards.
+
+Principais decisões técnicas:
+
+Arquitetura com três microsserviços em Python/FastAPI (eventos, compras, notificacoes), Nginx como API Gateway fazendo roteamento por path, PostgreSQL como banco relacional, RabbitMQ como broker de mensagens, e Prometheus + Grafana para observabilidade, tudo orquestrado via Docker Compose.
+
+A decisão técnica mais relevante do projeto está no serviço de compras: usei SELECT ... FOR UPDATE dentro de uma transação para evitar overselling (vender mais ingressos do que o estoque disponível) quando múltiplas compras concorrentes acontecem ao mesmo tempo. Também implementei idempotência via um transaction_id único, evitando que requisições repetidas dupliquem uma compra.
+
+Para comunicação assíncrona, o serviço de compras publica um evento no RabbitMQ após confirmar uma compra, e um worker separado (notificacoes) consome essa fila para simular o envio de confirmação, desacoplando essa responsabilidade do fluxo principal de compra.
+
+Implementei observabilidade desde o início do projeto, não como algo adicionado depois: métricas Prometheus em cada serviço FastAPI e logging estruturado em JSON.
+
+Também cheguei a rodar este projeto na AWS (via AWS Academy Lab), em contato prático com a nuvem, mapeando os conceitos equivalentes entre containers Docker e serviços AWS, como EC2 no lugar de instâncias locais e SQS como alternativa ao RabbitMQ.
+
+O que eu faria diferente hoje:
+
+O ponto mais importante: o serviço de compras acessa diretamente a tabela de eventos no banco compartilhado, em vez de consultar o serviço de eventos via API. Isso quebra o princípio de que cada microsserviço deveria ser dono exclusivo dos seus próprios dados (o mesmo princípio que descrevi na Parte 1 desta prova). O correto seria o serviço de compras chamar um endpoint de reserva/decremento de estoque exposto pelo serviço de eventos, possivelmente usando um padrão de saga para lidar com falhas parciais.
+
+Adicionaria autenticação e hash de senha (hoje não há nenhuma camada de segurança implementada), já que o projeto foi focado deliberadamente nos aspectos de arquitetura distribuída, deixando de lado a camada de segurança.
+
+Adicionaria testes automatizados, especialmente cobrindo o endpoint de compra, que é o trecho crítico de concorrência do sistema e hoje não tem nenhuma cobertura.
+
+Configuraria uma dead-letter queue no RabbitMQ; atualmente, uma mensagem que falha ao ser processada pelo worker de notificações é simplesmente descartada, sem reprocessamento.
+
+Adicionaria versionamento de schema com Alembic, em vez de criar as tabelas via create_all() no boot da aplicação, permitindo evolução controlada do banco.
 
 ## Uso de IA
 
