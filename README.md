@@ -429,6 +429,74 @@ e rate limiting no `/auth/login` (hoje não há proteção contra força bruta).
 - Instruções completas de execução (Docker e local) estão em
   [Como rodar o projeto](#como-rodar-o-projeto).
 
+## Parte 5 — Desafio de IA (agente baseado em regras)
+
+### Questão 8 (prática) — `POST /agente/perguntar`
+
+Endpoint que recebe uma pergunta em linguagem natural (português) sobre dados de
+Produtos e devolve uma resposta estruturada. **Não usa nenhuma API de LLM
+externa** (OpenAI, Anthropic, etc.) — a "interpretação" é feita por regex e
+casamento de palavras-chave (`app/services/agente_service.py`), conforme
+exigido pelo enunciado (a prova não integra com IA de terceiros em produção).
+
+**Como funciona**: `interpretar_pergunta()` testa a pergunta contra 3 padrões de
+regex, cada um mapeado numa "intenção":
+
+| Intenção | Exemplo de pergunta | Parâmetro extraído |
+|---|---|---|
+| `estoque_baixo` | "quais produtos estão com estoque abaixo de 10 unidades?" | `estoque_abaixo_de: 10` |
+| `preco_produto` | "qual o preço do produto Caneta Azul?" | `nome: "Caneta Azul"` |
+| `total_produtos` | "quantos produtos existem no total?" | *(nenhum)* |
+
+Se nenhum padrão bater, a resposta vem com `sucesso: false` e um `erro`
+explicando que a pergunta não foi entendida (nunca um erro 500 — o endpoint
+sempre responde `200`, com o "sucesso"/"erro" no corpo, não no status HTTP,
+igual um serviço de busca que pode simplesmente não ter resultado).
+
+**Reaproveitamento, sem duplicar lógica de consulta**: as 3 intenções são
+resolvidas chamando `produto_service.list_produtos(...)` — a mesma função usada
+por `GET /produtos`. `estoque_baixo` usa o filtro `estoque_abaixo_de` (o mesmo
+da Parte 3); `preco_produto` usa o filtro `nome` (busca parcial,
+case-insensitive, a mesma da listagem — por isso pode retornar mais de um
+produto, ou nenhum); `total_produtos` só lê o `total` já calculado pela
+paginação (`page_size=1`, sem trazer todos os registros). Nenhuma query nova
+foi escrita para o agente.
+
+**Formato da resposta**:
+
+```json
+{
+  "pergunta": "Quais produtos estão com estoque abaixo de 10 unidades?",
+  "intencao": "estoque_baixo",
+  "parametros": {"estoque_abaixo_de": 10},
+  "sucesso": true,
+  "resultado": {"produtos": [...], "total": 2},
+  "erro": null
+}
+```
+
+**Limitações (é regex, não NLP de verdade)**:
+
+- Só reconhece as 3 frases-padrão acima (com alguma variação de palavras
+  permitida pelo regex) — qualquer reformulação fora desses padrões
+  (sinônimos, ordem diferente das palavras, erros de digitação) cai em "não
+  entendi", mesmo que um humano entendesse facilmente.
+- Não faz nenhuma forma de correção ortográfica, sinônimos, ou entendimento de
+  contexto entre perguntas (cada chamada é isolada, sem memória de conversa).
+- `preco_produto` depende de o nome do produto aparecer quase literalmente na
+  pergunta (é passado direto como filtro `ILIKE %nome%` — funciona bem para
+  "Caneta Azul", mas não entende uma descrição indireta do produto).
+- Endpoint público (sem JWT), como `GET /produtos` — só lê dados, não expõe
+  nada que a listagem pública já não expusesse.
+
+Como desenhar isso de forma plugável para um LLM real no futuro (tool/function
+calling, MCP, guardrails, custo/latência/observabilidade) é a resposta da
+Questão 9, abaixo.
+
+### Questão 9 (teórica)
+
+`(TODO — item 10 da ordem de prioridade; ver CLAUDE.md/PROGRESSO.md)`
+
 ## Parte 6 — Pergunta de Perfil
 
 ### Questão 10
