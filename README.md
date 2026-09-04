@@ -9,17 +9,17 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 
 - [Como rodar o projeto](#como-rodar-o-projeto)
 - [Arquitetura e estrutura de pastas](#arquitetura-e-estrutura-de-pastas)
-- [Parte 1 — Arquitetura e Organização (teórica)](#parte-1)
-- [Parte 2 — Assíncrono e Concorrência](#parte-2)
-- [Parte 3 — API RESTful (CRUD de Produtos)](#parte-3) `(TODO)`
+- [Parte 1 — Arquitetura e Organização (teórica)](#parte-1--arquitetura-e-organização-teórica)
+- [Parte 2 — Assíncrono e Concorrência](#parte-2--assíncrono-e-concorrência)
+- [Parte 3 — API RESTful (CRUD real de ERP)](#parte-3--api-restful-crud-real-de-erp)
 - [Cache (Redis)](#cache-redis)
 - [Worker de fila (arq)](#worker-de-fila-arq)
 - [Autenticação (JWT)](#autenticação-jwt)
 - [Testes](#testes)
-- [Parte 4 — Docker e Orquestração](#parte-4)
-- [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5)
-- [Parte 6 — Pergunta de Perfil](#parte-6)
-- [Parte 7 — Portfólio](#parte-7)
+- [Parte 4 — Docker e Orquestração](#parte-4--docker-e-orquestração)
+- [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5--desafio-de-ia-agente-baseado-em-regras)
+- [Parte 6 — Pergunta de Perfil](#parte-6--pergunta-de-perfil)
+- [Parte 7 — Portfólio](#parte-7--portfólio)
 - [Uso de IA](#uso-de-ia)
 
 ## Como rodar o projeto
@@ -115,11 +115,11 @@ camada abaixo dela, o que facilita testar `services` com repositórios mockados,
 precisar de banco de dados real, e mantém regra de negócio fora dos endpoints.
 
 A justificativa completa (princípios que inspiraram essa escolha, trade-offs) está na
-resposta da [Parte 1 — Questão 2](#parte-1).
+resposta da [Parte 1 — Questão 2](#questão-2).
 
 **Schema do banco:** as tabelas são criadas via `Base.metadata.create_all()` do
 SQLAlchemy (sem ferramenta de migrations dedicada), suficiente para o escopo desta
-prova. Ver seção [Parte 4](#parte-4) para detalhes de como isso roda no startup da
+prova. Ver seção [Parte 4](#parte-4--docker-e-orquestração) para detalhes de como isso roda no startup da
 aplicação.
 
 ## Parte 1 — Arquitetura e Organização (teórica)
@@ -163,6 +163,37 @@ Organizei o projeto em camadas separadas (`routers`, `services`, `repositories`,
 Essa separação garante que cada camada só conhece a camada imediatamente abaixo dela (o `router` não fala diretamente com o banco, por exemplo), o que permite trocar detalhes de implementação, como adicionar cache com Redis ou trocar a estratégia de autenticação, sem impactar as demais camadas. Foi o que aconteceu, por exemplo, ao adicionar cache no endpoint de listagem: toda a lógica ficou concentrada no `service`, e o `router` não precisou de nenhuma alteração.
 
 Quanto aos princípios que inspiraram essa escolha: a separação de responsabilidades segue uma ideia próxima ao princípio de responsabilidade única (do SOLID) e a uma versão simplificada de Clean Architecture, sem a intenção de aplicar um framework arquitetural completo. O objetivo foi manter o código organizado e testável dentro do escopo desta prova.
+
+## Parte 3 — API RESTful (CRUD real de ERP)
+
+### Questão 6 (prática)
+
+Implementada em `app/models/produto.py`, `app/schemas/produto.py`,
+`app/repositories/produto.py`, `app/services/produto.py` e
+`app/routers/produto.py`: CRUD completo de Produtos (`id`, `nome`, `preco`,
+`quantidade_em_estoque`, `data_criacao`, `data_atualizacao`), validação via
+Pydantic (preço não negativo, nome não vazio nem numérico), persistência em
+PostgreSQL via SQLAlchemy, e paginação/filtros (`nome`, faixa de preço,
+`estoque_abaixo_de`) em `GET /produtos`.
+
+Cada aspecto já está detalhado em sua própria seção — esta apenas resume e
+aponta pra elas, sem duplicar o conteúdo técnico:
+
+- **Estrutura em camadas** (por que `routers`/`services`/`repositories`/
+  `schemas`/`models` existem, e por que SQLAlchemy síncrono foi a escolha):
+  [Arquitetura e estrutura de pastas](#arquitetura-e-estrutura-de-pastas) e
+  [Parte 1 — Questão 2](#questão-2).
+- **Cache Redis** no `GET /produtos` (estratégia de chave, TTL, por que sem
+  invalidação ativa por ora): [Cache (Redis)](#cache-redis).
+- **Worker de fila** disparado pelo `PATCH /produtos/{id}` (alerta de estoque
+  baixo processado em background, sem bloquear a resposta):
+  [Worker de fila (arq)](#worker-de-fila-arq).
+- **Autenticação JWT** protegendo os endpoints de escrita
+  (`POST`/`PATCH`/`DELETE`), com `GET` público (leitura de catálogo, não
+  sensível): [Autenticação (JWT)](#autenticação-jwt).
+- **Testes de validação dos schemas** (`ProdutoCreate`): [Testes](#testes).
+- **Dockerização** da aplicação e do banco: [Parte 4 — Docker e
+  Orquestração](#parte-4--docker-e-orquestração).
 
 ## Cache (Redis)
 
