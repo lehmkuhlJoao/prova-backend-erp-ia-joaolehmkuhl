@@ -2,9 +2,6 @@
 
 Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 
-> Este README será completado progressivamente conforme cada parte da prova é
-> implementada. Seções marcadas como `(TODO)` ainda não foram escritas.
-
 ## Sumário
 
 - [Como rodar o projeto](#como-rodar-o-projeto)
