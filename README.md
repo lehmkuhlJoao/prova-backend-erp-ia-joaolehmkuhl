@@ -15,6 +15,7 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 - [Cache (Redis)](#cache-redis)
 - [Worker de fila (arq)](#worker-de-fila-arq)
 - [Autenticação (JWT)](#autenticação-jwt)
+- [Testes](#testes)
 - [Parte 4 — Docker e Orquestração](#parte-4)
 - [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5)
 - [Parte 6 — Pergunta de Perfil](#parte-6)
@@ -394,6 +395,45 @@ com senha hasheada por usuário (não uma fixa via env), refresh tokens (hoje é
 access token de vida curta, sem forma de renovar sem logar de novo), roles/escopos
 (hoje é tudo-ou-nada: autenticado ou não, sem diferenciar quem pode fazer o quê),
 e rate limiting no `/auth/login` (hoje não há proteção contra força bruta).
+
+## Testes
+
+```bash
+source .venv/bin/activate   # ou o venv que preferir, com requirements.txt instalado
+pytest -v
+```
+
+23 testes, todos unitários — **nenhum precisa de Postgres/Redis rodando** (rodam
+em ~0.4s). Cobrem, em ordem de prioridade:
+
+1. **`tests/test_schemas_produto.py`** — validação do `ProdutoCreate`: preço
+   negativo falha, preço zero é aceito (o enunciado só proíbe negativo), nome
+   vazio/só espaço falha, nome ausente/`None` falha, nome puramente numérico
+   falha (`"12345"`, `"99.90"`, `"-5"`), dados válidos passam.
+2. **`tests/test_agente_service.py`** — o agente da Parte 5 (Q8): as 3
+   intenções reconhecidas (`estoque_baixo`, `preco_produto`, `total_produtos`)
+   retornam a resposta estruturada esperada, uma pergunta reconhecida mas sem
+   resultado (`sucesso: true`, lista vazia) é diferenciada de uma pergunta não
+   reconhecida (`sucesso: false`, erro claro). `produto_service.list_produtos`
+   é mockado (`monkeypatch`) — o teste cobre a lógica do agente (interpretação
+   + montagem da resposta), não a query em si.
+3. **`tests/test_dashboard_service.py`** — `_call_with_timeout` da Parte 2
+   (Q4): sucesso direto, timeout gera `status: erro` (com `TIMEOUT_SECONDS`
+   reduzido via `monkeypatch` pra rodar rápido), retry recupera uma falha
+   transitória, e falha persistente esgota as tentativas e retorna erro.
+
+**Por que não há testes de repository/integração com banco real ainda**: dado o
+tempo disponível, priorizei testes unitários de validação (schemas) e lógica de
+negócio isolada (agente, retry/timeout do dashboard) — código que é barato de
+testar sem infraestrutura e que já cobre as partes com mais regra explícita do
+enunciado (validação de dados, interpretação de linguagem natural, graceful
+degradation). Testes de repository/integração (rodar contra um Postgres/Redis
+real, de teste, provavelmente via um container efêmero ou um banco SQLite
+in-memory para os casos que permitem) seriam o próximo passo natural com mais
+tempo — cobririam coisas que os testes unitários atuais não alcançam, como a
+tradução correta dos filtros (`nome`, faixa de preço, `estoque_abaixo_de`) em
+SQL de verdade, o comportamento do cache Redis (hit/miss/TTL) e o fluxo
+completo do worker `arq` ponta a ponta.
 
 ## Parte 4 — Docker e Orquestração
 
