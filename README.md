@@ -20,7 +20,7 @@ Prova prática de Back-end (IA/ERP) para a IPM Sistemas.
 - [Parte 5 — Desafio de IA (agente baseado em regras)](#parte-5)
 - [Parte 6 — Pergunta de Perfil](#parte-6)
 - [Parte 7 — Portfólio](#parte-7)
-- [Uso de IA](#uso-de-ia) `(TODO)`
+- [Uso de IA](#uso-de-ia)
 
 ## Como rodar o projeto
 
@@ -589,7 +589,10 @@ Adicionaria versionamento de schema com Alembic, em vez de criar as tabelas via 
 
 ## Uso de IA
 
-Este projeto foi desenvolvido com apoio do Claude Code (Anthropic). Esta seção será
-detalhada ao final do desenvolvimento, descrevendo especificamente o que foi
-gerado/apoiado por IA e o que foi escrito/revisado manualmente, conforme pedido no
-enunciado.
+Utilizei o Claude (via Claude Code) como ferramenta de apoio ao longo de todo o desenvolvimento desta prova, mas de forma ativa e supervisionada, não apenas aceitando o que era gerado.
+
+Código: a maior parte do código foi gerada com apoio de IA, mas segui um processo de compreensão antes de aceitar cada parte: pedi explicações detalhadas sobre a sintaxe e as decisões técnicas de cada bloco (SQLAlchemy, Pydantic, Redis, Docker, JWT, arq, etc.) antes de avançar para o próximo, e evitei prosseguir com trechos que eu não conseguia entender ou justificar. Um exemplo concreto de intervenção ativa: em um primeiro momento, o código foi gerado utilizando Alembic para migrations, mas ao perceber que isso não era exigido pelo enunciado e adicionava complexidade desnecessária dado o prazo, pedi a reversão para uma abordagem mais simples (`Base.metadata.create_all()`), documentando essa decisão no histórico de commits.
+
+Optei deliberadamente por uma implementação mais simples em alguns pontos (como a cobertura de testes unitários, focada em validação e lógica de negócio isolada, sem cobertura completa) mesmo sabendo que uma abordagem mais completa seria possível com mais tempo, priorizando entregar algo que eu realmente compreendesse a fundo.
+
+Respostas teóricas (Partes 1, 2 Q3, 5 Q9, 6 e 7): essas respostas não foram geradas pela IA. Na maior parte dos casos eu já tinha uma noção inicial do conteúdo (por experiência prática construída durante esta própria prova, ou por conhecimento prévio, como observabilidade), e utilizei a IA como apoio para organizar, estruturar e complementar tecnicamente minhas respostas, mas o raciocínio, as decisões e o conteúdo central partiram de mim.
