@@ -7,7 +7,7 @@ from fastapi import FastAPI
 
 from app.core.config import settings
 from app.core.database import init_db
-from app.routers import auth, dashboard, produto
+from app.routers import agente, auth, dashboard, produto
 
 
 @asynccontextmanager
@@ -25,6 +25,7 @@ app = FastAPI(title="ERP - Produtos API", lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(produto.router)
 app.include_router(dashboard.router)
+app.include_router(agente.router)
 
 
 @app.get("/health")
